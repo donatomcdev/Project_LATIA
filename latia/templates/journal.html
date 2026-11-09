@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% set titles = {'records':'Registros', 'trends':'Tendencias', 'stats':'Estadísticas'} %}
+{% block title %}{{ titles[view] }} · LATIA{% endblock %}
+{% block scripts %}
+<script defer src="{{ url_for('static', filename='filter.js') }}"></script>
+{% if rows and view != 'records' %}
+<script defer src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='charts.js') }}"></script>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">TU DIARIO</p><h1>{{ titles[view] }}</h1>
+    <p class="muted">{{ {'records':'Guarda y consulta tus lecturas de presión y pulso.', 'trends':'Consulta cómo cambian tus lecturas a lo largo del tiempo.', 'stats':'Revisa los valores del período seleccionado.'}[view] }}</p>
+  </div>
+  {% if view == 'records' %}<a class="button add add-desktop" href="{{ url_for('journal.editor') }}">{{ icon('plus') }} Añadir lectura</a>{% endif %}
+</div>
+
+{% if view == 'records' and latest %}
+<section class="summary" aria-labelledby="latest-title">
+  <div class="summary-heading"><h2 id="latest-title">Lectura más reciente del período</h2><time datetime="{{ latest_time.isoformat() }}">{{ latest_time.strftime('%d/%m/%Y · %H:%M') }}</time></div>
+  <div class="summary-metrics">
+    <div><span>Presión arterial</span><strong>{{ latest.systolic }}<i>/</i>{{ latest.diastolic }}</strong><small>mmHg</small></div>
+    <div><span>Pulso</span><strong>{{ latest.pulse }}</strong><small>lpm</small></div>
+  </div>
+</section>
+{% endif %}
+
+<button type="button" class="panel filter" id="open-filter" aria-haspopup="dialog" aria-controls="filter-dialog">
+  {{ icon('calendar') }} <span>Filtro <strong>{{ periods.get(period, 'Seleccionar') }}{% if period == 'custom' and not filter_error %} · {{ start }} a {{ end }}{% endif %}</strong></span>
+  {{ icon('arrow') }}
+</button>
+<dialog class="panel filter-dialog" id="filter-dialog" aria-labelledby="filter-title"{% if filter_error %} data-reopen{% endif %}>
+  <form class="filter-form" method="get" action="{{ url_for(request.endpoint) }}">
+    <header class="filter-heading">
+      <h2 id="filter-title">Seleccionar rango de fechas</h2>
+      <button class="filter-close" type="button" id="cancel-filter" aria-label="Cerrar filtro">×</button>
+    </header>
+    {% if filter_error %}<p class="error" role="alert">{{ filter_error }}</p>{% endif %}
+    <fieldset class="filter-options" aria-label="Rango de fechas">
+      {% for key, label in periods.items() %}
+      {% set selected = key == period or (key == 'all' and period not in periods) %}
+      <label><input type="radio" name="period" value="{{ key }}"{% if selected %} checked autofocus{% endif %}>{{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <fieldset class="filter-dates" id="filter-dates" aria-label="Fechas del rango personalizado"{% if period != 'custom' %} hidden disabled{% endif %}>
+      <label>Desde<input type="date" name="start" value="{{ start }}" required></label>
+      <label>Hasta<input type="date" name="end" value="{{ end }}" required></label>
+    </fieldset>
+    <button class="button filter-submit" type="submit">Filtrar</button>
+  </form>
+</dialog>
+
+{% if not rows and not filter_error %}
+<section class="panel empty">
+  <span class="empty-icon">{{ icon('heart') }}</span>
+  <h2>{{ 'Todavía no hay lecturas' if period == 'all' else 'No hay lecturas en este período' }}</h2>
+  <p class="muted">{{ 'Añade una lectura para comenzar tu historial.' if period == 'all' else 'Selecciona otro rango de fechas para consultar tus lecturas.' }}</p>
+  {% if period != 'all' %}<a class="button" href="{{ url_for(request.endpoint) }}">Ver todas las lecturas</a>
+  {% elif view != 'records' %}<a class="button" href="{{ url_for('journal.editor') }}">Registrar una lectura</a>{% endif %}
+</section>
+{% elif view == 'records' and rows %}
+<section aria-labelledby="history-title">
+  <div class="section-heading"><h2 id="history-title">Historial</h2><span class="count">{{ rows|length }} {{ 'lectura' if rows|length == 1 else 'lecturas' }}</span></div>
+  {% for day, readings in groups.items() %}
+  <section class="day">
+    <h3><time datetime="{{ day.isoformat() }}">{{ day.strftime('%d/%m/%Y') }}</time></h3>
+    <ul class="readings" role="list">
+      {% for row, local in readings %}
+      <li><a class="reading" href="{{ url_for('journal.editor', reading_id=row.id) }}">
+        <time datetime="{{ local.isoformat() }}">{{ local.strftime('%H:%M') }}</time>
+        <span class="reading-pressure"><strong>{{ row.systolic }}/{{ row.diastolic }}</strong> <small>mmHg</small></span>
+        <span class="reading-pulse"><strong>{{ row.pulse }}</strong> <small>lpm</small></span>
+        {{ icon('arrow') }}
+        {% if row.note %}<span class="reading-note">{{ row.note }}</span>{% endif %}
+      </a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+</section>
+{% elif view == 'trends' and rows %}
+<section class="panel chart-panel">
+  <h2>Evolución de tus lecturas</h2>
+  <p class="muted">{{ rows|length }} {{ 'lectura' if rows|length == 1 else 'lecturas' }} en el período</p>
+  <div class="chart"><canvas id="trend-chart" data-timezone="{{ g.account.timezone }}" role="img" aria-label="Evolución de la presión sistólica, diastólica y el pulso. Los valores están disponibles en la tabla siguiente."></canvas></div>
+  <p id="chart-error" class="muted" hidden>El gráfico no está disponible. Puedes consultar los valores en la tabla.</p>
+  <script type="application/json" id="chart-data">{{ chart|tojson }}</script>
+  <details class="data-details"><summary>Ver datos de la gráfica</summary>
+    <table><thead><tr><th scope="col">Fecha y hora</th><th scope="col">Sistólica</th><th scope="col">Diastólica</th><th scope="col">Pulso</th></tr></thead>
+    <tbody>{% for entry in chart %}<tr><th scope="row">{{ entry.label }}</th><td>{{ entry.systolic }}</td><td>{{ entry.diastolic }}</td><td>{{ entry.pulse }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+</section>
+{% elif view == 'stats' and rows %}
+<section class="panel chart-panel">
+  <h2>Resumen de mediciones</h2>
+  <p class="muted">{{ rows|length }} {{ 'lectura' if rows|length == 1 else 'lecturas' }} en el período</p>
+  <table>
+    <thead><tr><th scope="col">Medición</th><th scope="col">Promedio</th><th scope="col">Mínimo</th><th scope="col">Máximo</th></tr></thead>
+    <tbody>{% for label, unit, average, minimum, maximum in stats %}<tr><th scope="row">{{ label }} <small>{{ unit }}</small></th><td>{{ average }}</td><td>{{ minimum }}</td><td>{{ maximum }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <div class="chart"><canvas id="stats-chart" role="img" aria-label="Comparación de mínimos, promedios y máximos de presión y pulso, disponibles también en la tabla."></canvas></div>
+  <p id="chart-error" class="muted" hidden>El gráfico no está disponible. Puedes consultar los valores en la tabla.</p>
+  <script type="application/json" id="chart-data">{{ stats|tojson }}</script>
+</section>
+{% endif %}
+{% if view == 'records' %}
+<a class="button add add-mobile" href="{{ url_for('journal.editor') }}">{{ icon('plus') }} Añadir lectura</a>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,46 @@
+{% macro icon(name) -%}
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{% if name == 'heart' %}<path d="M20.8 5.5a4.7 4.7 0 0 0-6.7 0L12 7.6 9.9 5.5a4.7 4.7 0 0 0-6.7 6.7L12 21l8.8-8.8a4.7 4.7 0 0 0 0-6.7Z"/><path d="M3 12h5l2-3 3 6 2-3h6"/>
+{% elif name == 'records' %}<path d="M8 6h12M8 12h12M8 18h12M4 6h.1M4 12h.1M4 18h.1"/>
+{% elif name == 'trends' %}<path d="m3 17 6-6 4 4 7-8M15 7h5v5"/>
+{% elif name == 'stats' %}<path d="M4 20h16M6 16v-4m6 4V5m6 11V9"/>
+{% elif name == 'profile' %}<circle cx="12" cy="7.5" r="3.5"/><path d="M5 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/>
+{% elif name == 'plus' %}<path d="M12 5v14M5 12h14"/>
+{% elif name == 'calendar' %}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-13 5h2m4 0h2"/>
+{% elif name == 'arrow' %}<path d="m9 6 6 6-6 6"/>
+{% endif %}
+</svg>
+{%- endmacro %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#145A3B">
+  <title>{% block title %}LATIA{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block scripts %}{% endblock %}
+</head>
+<body>
+<a class="skip-link" href="#main">Saltar al contenido</a>
+<header class="topbar">
+  <div class="shell top-inner">
+    <a class="brand" href="{{ url_for('journal.records') }}"><span class="brand-icon">{{ icon('heart') }}</span><span>LATIA<small>Diario de presión arterial</small></span></a>
+    {% if g.account %}
+    <nav class="nav" aria-label="Navegación principal">
+      {% for target, label in [('records','Registros'), ('trends','Tendencias'), ('stats','Estadísticas'), ('profile','Perfil')] %}
+      {% set selected = request.endpoint == 'journal.' ~ target or (target == 'records' and request.endpoint == 'journal.editor') %}
+      {% set filters = {'period': period, 'start': start, 'end': end} if view and period != 'all' and target != 'profile' else {} %}
+      <a href="{{ url_for('journal.' ~ target, **filters) }}"{% if selected %} aria-current="page"{% endif %}>{{ icon(target) }}<span>{{ label }}</span></a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+  </div>
+</header>
+<main id="main" class="shell content">
+  {% for message in get_flashed_messages() %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

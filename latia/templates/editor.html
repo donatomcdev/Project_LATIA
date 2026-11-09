@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if row else 'Añadir' }} lectura · LATIA{% endblock %}
+{% block content %}
+<div class="narrow">
+  <a class="back" href="{{ url_for('journal.records') }}">← Volver a registros</a>
+  <div class="page-heading"><div><p class="eyebrow">PRESIÓN Y PULSO</p><h1>{{ 'Editar lectura' if row else 'Añadir lectura' }}</h1><p class="muted">Hora del perfil: {{ g.account.timezone }}</p></div></div>
+  <form class="panel form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Fecha y hora de la medición<input type="datetime-local" name="measured_at" value="{{ values.measured_at }}" required></label>
+    <div class="metric-fields">
+      {% for key, label, unit in metrics %}
+      <label>{{ label }} <small>{{ unit }}</small><input type="number" inputmode="numeric" name="{{ key }}" value="{{ values[key] }}" min="1" max="999" step="1" required></label>
+      {% endfor %}
+    </div>
+    <label>Comentario <small>Opcional</small><textarea name="note" maxlength="500" rows="3" placeholder="Añade contexto sobre esta medición">{{ values.note }}</textarea></label>
+    <div class="actions"><a class="button secondary" href="{{ url_for('journal.records') }}">Cancelar</a><button class="button" type="submit">Guardar lectura</button></div>
+  </form>
+  {% if row %}
+  <details class="panel delete">
+    <summary>Eliminar lectura</summary>
+    <form method="post" action="{{ url_for('journal.delete', reading_id=row.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <p>Esta acción elimina la lectura de tu historial.</p>
+      <button class="button danger" type="submit">Confirmar eliminación</button>
+    </form>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Error · LATIA{% endblock %}
+{% block content %}
+<section class="panel empty"><h1>No se pudo completar la solicitud</h1><p>{{ message }}</p><a class="button" href="{{ url_for('journal.records') }}">Volver a LATIA</a></section>
+{% endblock %}

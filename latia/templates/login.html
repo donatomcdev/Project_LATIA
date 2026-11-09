@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión · LATIA{% endblock %}
+{% block content %}
+<div class="login">
+  <div class="page-heading"><div><p class="eyebrow">TU DIARIO PERSONAL</p><h1>Iniciar sesión</h1><p class="muted">Accede a tu historial de presión arterial y pulso.</p></div></div>
+  <form class="panel form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Usuario<input name="username" autocomplete="username" autocapitalize="none" maxlength="64" required></label>
+    <label>Contraseña<input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="button" type="submit">Entrar</button>
+  </form>
+</div>
+{% endblock %}

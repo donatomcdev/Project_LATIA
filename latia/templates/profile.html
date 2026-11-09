@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Perfil · LATIA{% endblock %}
+{% block content %}
+<div class="narrow">
+  <div class="page-heading"><div><p class="eyebrow">TU CUENTA</p><h1>Perfil</h1><p class="muted">Personaliza tu cuenta y tus preferencias.</p></div></div>
+  {% set has_photo = g.account.profile_photo is not none %}
+  <form id="foto" class="panel form-panel" method="post" enctype="multipart/form-data" action="{{ url_for('journal.upload_photo') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="profile-identity">
+      {% if has_photo %}
+      <img class="profile-avatar" src="{{ url_for('journal.profile_photo') }}" alt="Tu foto de perfil" width="64" height="64">
+      {% else %}
+      <span class="profile-avatar" aria-hidden="true">{{ g.account.username[0]|upper }}</span>
+      {% endif %}
+      <div><h2>Foto de perfil</h2><p class="muted">{{ g.account.username }}</p></div>
+    </div>
+    {% if photo_error %}<p class="error" role="alert">{{ photo_error }}</p>{% endif %}
+    <label>{{ 'Elegir nueva foto' if has_photo else 'Elegir foto' }}<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required aria-describedby="photo-help"></label>
+    <p id="photo-help" class="muted">JPG, PNG o WebP. Máximo 5 MB y 25 megapíxeles.</p>
+    <div class="actions"><button class="button" type="submit">{{ 'Cambiar foto' if has_photo else 'Guardar foto' }}</button></div>
+  </form>
+  <form class="panel form-panel" method="post" action="{{ url_for('journal.profile') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Preferencias</h2>
+    <label>Zona horaria<input name="timezone" value="{{ timezone }}" maxlength="64" required list="timezones" aria-describedby="timezone-help"></label>
+    <datalist id="timezones"><option value="America/La_Paz"><option value="America/Lima"><option value="America/Bogota"><option value="America/Mexico_City"><option value="Europe/Madrid"><option value="UTC"></datalist>
+    <p id="timezone-help" class="muted">Introduce una zona IANA como America/La_Paz. Se usa para mostrar y filtrar las fechas.</p>
+    <div class="actions"><button class="button" type="submit">Guardar preferencias</button></div>
+  </form>
+  <form id="contrasena" class="panel form-panel" method="post" action="{{ url_for('journal.change_password') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Cambiar contraseña</h2>
+    {% if password_error %}<p class="error" role="alert">{{ password_error }}</p>{% endif %}
+    <label>Contraseña actual<input type="password" name="current_password" autocomplete="current-password" required></label>
+    <label>Nueva contraseña<input type="password" name="new_password" autocomplete="new-password" minlength="12" maxlength="128" required aria-describedby="password-help"></label>
+    <label>Confirmar nueva contraseña<input type="password" name="confirm_password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+    <p id="password-help" class="muted">Usa entre 12 y 128 caracteres. Al guardar, se cerrarán las demás sesiones de esta cuenta.</p>
+    <div class="actions"><button class="button" type="submit">Cambiar contraseña</button></div>
+  </form>
+  <form class="logout" method="post" action="{{ url_for('journal.logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="button secondary" type="submit">Cerrar sesión</button>
+  </form>
+</div>
+{% endblock %}
