@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: latia
+    runtime: python
+    region: ohio
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: waitress-serve --call --listen=0.0.0.0:$PORT latia:create_app
+    healthCheckPath: /acceso
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: LATIA_SECURE_COOKIES
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false

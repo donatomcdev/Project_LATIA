@@ -51,6 +51,41 @@
 }
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background: var(--background); color: var(--ink); }
+.splash { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .splash-active {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 16px;
+    padding: 24px;
+    background: radial-gradient(ellipse at center, var(--light), var(--background) 70%);
+    color: var(--dark);
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+    animation: splash-exit 320ms ease-in 1100ms forwards;
+  }
+  .splash-active img {
+    width: clamp(104px, 34vw, 156px);
+    height: auto;
+    animation: splash-pulse 900ms ease-out both;
+  }
+  body:focus-within .splash-active { visibility: hidden; }
+}
+@keyframes splash-pulse {
+  from { opacity: 0; transform: scale(.85); }
+  35% { opacity: 1; transform: scale(1.06); }
+  56% { transform: scale(1); }
+  72% { transform: scale(1.035); }
+  to { transform: scale(1); }
+}
+@keyframes splash-exit {
+  to { opacity: 0; visibility: hidden; }
+}
 a { color: var(--primary); }
 button, input, textarea, select { font: inherit; }
 button, summary { cursor: pointer; }

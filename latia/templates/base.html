@@ -39,6 +39,13 @@
   {% block scripts %}{% endblock %}
 </head>
 <body>
+{% if request.method == 'GET' and (request.endpoint == 'journal.records' or (request.endpoint == 'journal.login' and not linking)) %}
+<div class="splash" aria-hidden="true">
+  <img src="{{ url_for('static', filename='latia-icon.png') }}" alt="" width="180" height="180">
+  <p>Diario de presión arterial</p>
+</div>
+<script src="{{ url_for('static', filename='splash.js') }}"></script>
+{% endif %}
 <a class="skip-link" href="#main">Saltar al contenido</a>
 <header class="topbar">
   <div class="shell top-inner">
