@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Elegir nombre de usuario · LATIA{% endblock %}
+{% block content %}
+<div class="login">
+  <div class="page-heading"><div><h1>Elige tu nombre de usuario</h1><p class="muted">Este nombre identifica tu perfil dentro de LATIA.</p></div></div>
+  <form class="panel form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Nombre de usuario<input name="username" value="{{ username|default('') }}" autocomplete="username" autocapitalize="none" maxlength="64" required></label>
+    <button class="button" type="submit">Crear mi perfil</button>
+  </form>
+</div>
+{% endblock %}

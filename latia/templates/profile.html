@@ -33,20 +33,16 @@
     {% for message in get_flashed_messages(category_filter=['username-updated']) %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
     {% if username_error %}<p class="error" role="alert">{{ username_error }}</p>{% endif %}
     <label>Nuevo nombre de usuario<input name="new_username" value="{{ new_username|default('') }}" maxlength="64" autocapitalize="none" spellcheck="false" autocomplete="off" required></label>
-    <p class="muted">Usarás el nuevo nombre para iniciar sesión.</p>
+    <p class="muted">{{ 'Este nombre identifica tu perfil dentro de LATIA.' if g.account.auth_user_id else 'Usarás este nombre para el acceso anterior mientras vinculas un correo.' }}</p>
     <div class="actions"><button class="button" type="submit">Guardar nombre de usuario</button></div>
   </form>
-  <form id="contrasena" class="panel form-panel" method="post" action="{{ url_for('journal.change_password') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <h2>Cambiar contraseña</h2>
-    {% for message in get_flashed_messages(category_filter=['password-updated']) %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
-    {% if password_error %}<p class="error" role="alert">{{ password_error }}</p>{% endif %}
-    <label>Contraseña actual<input type="password" name="current_password" autocomplete="current-password" required></label>
-    <label>Nueva contraseña<input type="password" name="new_password" autocomplete="new-password" pattern=".{8,16}" required aria-describedby="password-help"></label>
-    <label>Confirmar nueva contraseña<input type="password" name="confirm_password" autocomplete="new-password" pattern=".{8,16}" required aria-describedby="password-help"></label>
-    <p id="password-help" class="muted">Usa entre 8 y 16 caracteres. Al guardar, se cerrarán las demás sesiones de esta cuenta.</p>
-    <div class="actions"><button class="button" type="submit">Cambiar contraseña</button></div>
-  </form>
+  {% if not g.account.auth_user_id %}
+  <section class="panel form-panel">
+    <h2>Acceso por correo</h2>
+    <p class="muted">Vincula tu correo para entrar con un código y conservar tu historial.</p>
+    <div class="actions"><a class="button" href="{{ url_for('journal.login', vincular=1) }}">Vincular correo</a></div>
+  </section>
+  {% endif %}
   <form class="logout" method="post" action="{{ url_for('journal.logout') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="button secondary" type="submit">Cerrar sesión</button>

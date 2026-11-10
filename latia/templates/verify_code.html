@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Verificar código · LATIA{% endblock %}
+{% block content %}
+<div class="login">
+  <div class="page-heading"><div><h1>Introduce el código</h1><p class="muted">Si el envío se completó, recibirás seis dígitos en {{ pending.email }}.</p></div></div>
+  <form class="panel form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Código<input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label>
+    <button class="button" type="submit">Verificar código</button>
+  </form>
+  <a class="back" href="{{ url_for('journal.login', vincular=1) if pending.account is not none else url_for('journal.login') }}">Solicitar otro código</a>
+</div>
+{% endblock %}

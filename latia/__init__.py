@@ -23,6 +23,8 @@ def create_app():
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
         MAX_CONTENT_LENGTH=64 * 1024,
+        SUPABASE_URL=os.environ.get("SUPABASE_URL", ""),
+        SUPABASE_PUBLISHABLE_KEY=os.environ.get("SUPABASE_PUBLISHABLE_KEY", ""),
     )
     @app.before_request
     def allow_photo_upload():

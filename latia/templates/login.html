@@ -2,12 +2,20 @@
 {% block title %}Iniciar sesión · LATIA{% endblock %}
 {% block content %}
 <div class="login">
-  <div class="page-heading"><div><p class="eyebrow">TU DIARIO PERSONAL</p><h1>Iniciar sesión</h1><p class="muted">Accede a tu historial de presión arterial y pulso.</p></div></div>
+  <div class="page-heading"><div><p class="eyebrow">TU DIARIO PERSONAL</p><h1>{{ 'Vincular correo' if linking else 'Acceder con código' }}</h1><p class="muted">Recibe un código de un solo uso en tu correo electrónico.</p></div></div>
+  {% if enabled %}
   <form class="panel form-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Usuario<input name="username" autocomplete="username" autocapitalize="none" maxlength="64" required></label>
-    <label>Contraseña<input type="password" name="password" autocomplete="current-password" required></label>
-    <button class="button" type="submit">Entrar</button>
+    <label>Correo electrónico<input type="email" name="email" value="{{ email }}" autocomplete="email" autocapitalize="none" maxlength="254" required></label>
+    <button class="button" type="submit">Enviar código</button>
   </form>
+  {% else %}
+  <p class="panel form-panel">El envío de códigos aún no está configurado.</p>
+  {% endif %}
+  {% if linking %}
+  <a class="back" href="{{ url_for('journal.profile') }}">← Volver a Perfil</a>
+  {% else %}
+  <a class="back" href="{{ url_for('journal.legacy_login') }}">Acceso para cuentas existentes</a>
+  {% endif %}
 </div>
 {% endblock %}

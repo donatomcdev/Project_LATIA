@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Identity, Index, LargeBinary, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -13,11 +14,15 @@ class Base(DeclarativeBase):
 
 class Account(Base):
     __tablename__ = "accounts"
-    __table_args__ = {"schema": SCHEMA}
+    __table_args__ = (
+        CheckConstraint("password_hash IS NOT NULL OR auth_user_id IS NOT NULL", name="ck_accounts_access"),
+        {"schema": SCHEMA},
+    )
 
     id: Mapped[int] = mapped_column(Identity(), primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    auth_user_id: Mapped[UUID | None] = mapped_column(unique=True)
     timezone: Mapped[str] = mapped_column(String(64))
     session_version: Mapped[int] = mapped_column(server_default="0")
     profile_photo: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)

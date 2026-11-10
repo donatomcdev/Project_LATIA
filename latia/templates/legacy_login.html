@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión · LATIA{% endblock %}
+{% block content %}
+<div class="login">
+  <div class="page-heading"><div><p class="eyebrow">TU DIARIO PERSONAL</p><h1>Acceso para cuentas existentes</h1><p class="muted">Entra con tu usuario para vincular un correo desde Perfil.</p></div></div>
+  <form class="panel form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Usuario<input name="username" autocomplete="username" autocapitalize="none" maxlength="64" required></label>
+    <label>Contraseña<input type="password" name="password" autocomplete="current-password" required></label>
+    <button class="button" type="submit">Entrar</button>
+  </form>
+  <a class="back" href="{{ url_for('journal.login') }}">← Volver al acceso por código</a>
+</div>
+{% endblock %}

@@ -1,6 +1,9 @@
 from bisect import bisect_left
 from datetime import UTC, date, datetime, time, timedelta
+import re
 from statistics import mean
+from time import time as unix_time
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import click
@@ -12,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from . import database
+from .email_auth import EmailAuthError, otp_available, send_code, verify_code
 from .models import Account, Reading
 from .profile_photo import normalize_photo
 from .reports import readings_pdf
@@ -25,6 +29,8 @@ PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 16
 PASSWORD_LENGTH_ERROR = f"La contraseña debe tener entre {PASSWORD_MIN_LENGTH} y {PASSWORD_MAX_LENGTH} caracteres."
 DUMMY_HASH = generate_password_hash("latia-login-placeholder")
+PUBLIC_ACCESS = {"journal.login", "journal.legacy_login", "journal.verify_login_code", "journal.complete_signup"}
+OTP_LIFETIME = 600
 
 
 def valid_zone(value):
@@ -65,28 +71,131 @@ def load_account():
             g.account = account
         else:
             session.clear()
-    if request.endpoint != "journal.login" and g.account is None:
+    if request.endpoint not in PUBLIC_ACCESS and g.account is None:
         return redirect(url_for("journal.login"))
 
 
 @journal.route("/acceso", methods=["GET", "POST"])
 def login():
+    linking = g.account is not None and request.args.get("vincular") == "1" and g.account.auth_user_id is None
+    if g.account is not None and not linking:
+        return redirect(url_for("journal.records"))
+    email = request.form.get("email", "").strip()
+    if request.method == "POST":
+        if len(email) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            return render_template("login.html", enabled=otp_available(), linking=linking, email=email, error="Introduce un correo válido."), 422
+        try:
+            send_code(email)
+        except EmailAuthError as error:
+            return render_template("login.html", enabled=otp_available(), linking=linking, email=email, error=str(error)), error.status
+        session.pop("verified_signup", None)
+        session["pending_code"] = {"email": email, "account": g.account.id if linking else None, "expires": unix_time() + OTP_LIFETIME}
+        return redirect(url_for("journal.verify_login_code"), code=303)
+    return render_template("login.html", enabled=otp_available(), linking=linking, email=email)
+
+
+def start_session(account):
+    session.clear()
+    session["account_id"] = account.id
+    session["session_version"] = account.session_version
+    session.permanent = True
+    return redirect(url_for("journal.records"), code=303)
+
+
+@journal.route("/acceso/codigo", methods=["GET", "POST"])
+def verify_login_code():
+    pending = session.get("pending_code")
+    account_id = g.account.id if g.account else None
+    if not pending or pending["expires"] <= unix_time() or pending["account"] != account_id:
+        session.pop("pending_code", None)
+        flash("Solicita un código nuevo para continuar.")
+        return redirect(url_for("journal.login", **({"vincular": 1} if g.account else {})), code=303)
+    if request.method == "GET":
+        return render_template("verify_code.html", pending=pending)
+    code = request.form.get("code", "").strip()
+    if not re.fullmatch(r"[0-9]{6}", code):
+        return render_template("verify_code.html", pending=pending, error="Introduce los seis dígitos del código."), 422
+    try:
+        identity = verify_code(pending["email"], code)
+    except EmailAuthError as error:
+        return render_template("verify_code.html", pending=pending, error=str(error)), error.status
+    session.pop("pending_code", None)
+    db = database()
+    account = db.scalar(select(Account).where(Account.auth_user_id == identity))
+    if g.account:
+        if account is not None or g.account.auth_user_id is not None:
+            flash("No se pudo vincular este correo a tu cuenta.")
+            return redirect(url_for("journal.profile"), code=303)
+        try:
+            updated = db.scalar(
+                update(Account)
+                .where(Account.id == account_id, Account.auth_user_id.is_(None))
+                .values(auth_user_id=identity, password_hash=None, session_version=Account.session_version + 1)
+                .returning(Account.session_version)
+            )
+            db.commit()
+        except IntegrityError as conflict:
+            db.rollback()
+            if not isinstance(conflict.orig, UniqueViolation):
+                raise
+            updated = None
+        if updated is None:
+            flash("No se pudo vincular este correo a tu cuenta.")
+        else:
+            session["session_version"] = updated
+            flash("Correo vinculado. En adelante podrás entrar con un código.")
+        return redirect(url_for("journal.profile"), code=303)
+    if account is not None:
+        return start_session(account)
+    session["verified_signup"] = {"identity": str(identity), "expires": unix_time() + OTP_LIFETIME}
+    return redirect(url_for("journal.complete_signup"), code=303)
+
+
+@journal.route("/acceso/usuario", methods=["GET", "POST"])
+def complete_signup():
+    if g.account:
+        return redirect(url_for("journal.records"))
+    verified = session.get("verified_signup")
+    if not verified or verified["expires"] <= unix_time():
+        session.pop("verified_signup", None)
+        return redirect(url_for("journal.login"))
+    if request.method == "GET":
+        return render_template("signup.html")
+    username = request.form.get("username", "").strip().lower()
+    if not 1 <= len(username) <= 64 or "\x00" in username:
+        return render_template("signup.html", username=username, error="Introduce un nombre válido de hasta 64 caracteres."), 422
+    db = database()
+    identity = UUID(verified["identity"])
+    account = Account(username=username, auth_user_id=identity, timezone="America/La_Paz")
+    db.add(account)
+    try:
+        db.commit()
+    except IntegrityError as conflict:
+        db.rollback()
+        if not isinstance(conflict.orig, UniqueViolation):
+            raise
+        if db.scalar(select(Account.id).where(Account.auth_user_id == identity)) is not None:
+            session.pop("verified_signup", None)
+            return redirect(url_for("journal.login"), code=303)
+        return render_template("signup.html", username=username, error="Ese nombre de usuario ya está en uso."), 409
+    return start_session(account)
+
+
+@journal.route("/acceso/anterior", methods=["GET", "POST"])
+def legacy_login():
     if g.account is not None:
         return redirect(url_for("journal.records"))
     if request.method == "POST":
         username = request.form.get("username", "").strip().lower()
         password = request.form.get("password", "")
         if not 1 <= len(username) <= 64 or "\x00" in username:
-            return render_template("login.html", error="Usuario o contraseña incorrectos."), 401
+            return render_template("legacy_login.html", error="Usuario o contraseña incorrectos."), 401
         account = database().scalar(select(Account).where(Account.username == username))
-        if check_password_hash(account.password_hash if account else DUMMY_HASH, password) and account:
-            session.clear()
-            session["account_id"] = account.id
-            session["session_version"] = account.session_version
-            session.permanent = True
-            return redirect(url_for("journal.records"), code=303)
-        return render_template("login.html", error="Usuario o contraseña incorrectos."), 401
-    return render_template("login.html")
+        password_hash = account.password_hash if account else None
+        if check_password_hash(password_hash or DUMMY_HASH, password) and password_hash:
+            return start_session(account)
+        return render_template("legacy_login.html", error="Usuario o contraseña incorrectos."), 401
+    return render_template("legacy_login.html")
 
 
 @journal.post("/salir")
@@ -345,43 +454,6 @@ def edit_ranges():
     return render_template(
         "ranges.html", values=values, levels=RANGE_LEVELS[:-1], metrics=METRICS[:2], error=error,
     ), 422 if error else 200
-
-
-@journal.post("/perfil/contrasena")
-def change_password():
-    current = request.form.get("current_password", "")
-    new = request.form.get("new_password", "")
-    confirmation = request.form.get("confirm_password", "")
-    account = g.account
-    error = None
-    if not PASSWORD_MIN_LENGTH <= len(new) <= PASSWORD_MAX_LENGTH:
-        error = PASSWORD_LENGTH_ERROR
-    elif new != confirmation:
-        error = "La nueva contraseña y su confirmación deben coincidir."
-    elif new == current:
-        error = "Elige una contraseña diferente de la actual."
-    elif not check_password_hash(account.password_hash, current):
-        error = "La contraseña actual es incorrecta."
-    if error:
-        return render_template("profile.html", timezone=account.timezone, password_error=error), 422
-
-    db = database()
-    next_version = account.session_version + 1
-    changed = db.scalar(
-        update(Account)
-        .where(Account.id == account.id, Account.session_version == account.session_version)
-        .values(password_hash=generate_password_hash(new), session_version=next_version)
-        .returning(Account.id)
-    )
-    if changed is None:
-        db.rollback()
-        session.clear()
-        flash("La contraseña ya cambió. Inicia sesión de nuevo.")
-        return redirect(url_for("journal.login"), code=303)
-    db.commit()
-    session["session_version"] = next_version
-    flash("Contraseña actualizada. Las demás sesiones se cerraron.", "password-updated")
-    return redirect(url_for("journal.profile", _anchor="contrasena"), code=303)
 
 
 @journal.get("/perfil/foto")

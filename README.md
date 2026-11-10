@@ -36,7 +36,13 @@ Edita `.env`. Pon la contraseña del rol en `DATABASE_URL` y el valor generado e
 .\.venv\Scripts\python.exe -m flask --app latia run
 ```
 
-Abre [LATIA local](http://127.0.0.1:5000) e inicia sesión con la cuenta creada. El historial empieza vacío. Chart.js se sirve desde los archivos estáticos de la aplicación.
+Abre [LATIA local](http://127.0.0.1:5000). Si creaste una cuenta por consola, usa **Acceso para cuentas existentes**. El historial empieza vacío. Chart.js se sirve desde los archivos estáticos de la aplicación.
+
+## Acceso por código de correo
+
+Configura `SUPABASE_URL` y `SUPABASE_PUBLISHABLE_KEY` en `.env`. En Supabase Auth habilita el proveedor de correo y el registro. Configura la plantilla de Magic Link con `{{ .Token }}` para enviar el código de seis dígitos y fija su vigencia en 600 segundos. Para habilitar el envío a usuarios externos, configura SMTP con un remitente verificado. Reinicia Flask después de cambiar la configuración. [Acceso por código](https://supabase.com/docs/guides/auth/auth-email-passwordless) · [SMTP personalizado](https://supabase.com/docs/guides/auth/auth-smtp)
+
+Para probar con PostgreSQL local, usa un proyecto de autenticación separado del de producción. **Acceder con código** lleva a elegir un nombre de usuario la primera vez. Las cuentas anteriores pueden entrar con sus credenciales y usar **Perfil → Vincular correo** para conservar sus lecturas. Después de vincularlo, la cuenta accede por código. La reversión de la migración de acceso requiere que todas las cuentas tengan un método de acceso compatible con la versión anterior.
 
 ## Publicación con Supabase
 
@@ -45,12 +51,12 @@ Flask consulta PostgreSQL directamente por SQLAlchemy. Mantén el esquema `latia
 1. Guarda las cadenas de conexión en los secretos del servidor. Usa `MIGRATION_DATABASE_URL` para la cuenta que ejecutará Alembic y `DATABASE_URL` para un rol de aplicación con permisos limitados. Configura TLS con `sslmode=verify-full` y el certificado raíz correspondiente mediante `sslrootcert`. [SSL en Supabase](https://supabase.com/docs/guides/platform/ssl-enforcement)
 2. Ejecuta `python -m alembic upgrade head` con el rol de migraciones. Si `MIGRATION_DATABASE_URL` está ausente, Alembic usa `DATABASE_URL`.
 3. Crea el rol de ejecución `latia_app` con contraseña segura y otorga solo los permisos de abajo con el propietario del esquema. Apunta `DATABASE_URL` a ese rol antes de crear la primera cuenta con `flask --app latia crear-usuario`.
-4. Configura una `SECRET_KEY` exclusiva y activa `LATIA_SECURE_COOKIES=1`. Ejecuta `waitress-serve --call --listen=127.0.0.1:8000 latia:create_app` detrás de un proxy HTTPS que transmita el esquema de la solicitud desde una IP de confianza. Configura Waitress para confiar solo en ese proxy y en su cabecera `X-Forwarded-Proto`. Aplica límites de intentos de acceso en el proxy para `POST /acceso`. [Configuración de Waitress](https://docs.pylonsproject.org/projects/waitress/en/stable/arguments.html)
+4. Configura una `SECRET_KEY` exclusiva y activa `LATIA_SECURE_COOKIES=1`. Ejecuta `waitress-serve --call --listen=127.0.0.1:8000 latia:create_app` detrás de un proxy HTTPS que transmita el esquema de la solicitud desde una IP de confianza. Configura Waitress para confiar solo en ese proxy y en su cabecera `X-Forwarded-Proto`. Aplica límites de intentos de acceso en el proxy a los POST de `/acceso`, `/acceso/codigo` y `/acceso/anterior`. [Configuración de Waitress](https://docs.pylonsproject.org/projects/waitress/en/stable/arguments.html)
 
 ```sql
 GRANT USAGE ON SCHEMA latia TO latia_app;
 GRANT SELECT, INSERT ON latia.accounts TO latia_app;
-GRANT UPDATE (username, timezone, password_hash, session_version, profile_photo, pressure_ranges) ON latia.accounts TO latia_app;
+GRANT UPDATE (username, timezone, password_hash, auth_user_id, session_version, profile_photo, pressure_ranges) ON latia.accounts TO latia_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON latia.readings TO latia_app;
 GRANT USAGE ON SEQUENCE latia.accounts_id_seq, latia.readings_id_seq TO latia_app;
 ```
