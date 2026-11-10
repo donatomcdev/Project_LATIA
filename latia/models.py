@@ -1,7 +1,8 @@
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Identity, Index, LargeBinary, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, column_property, mapped_column
 
 SCHEMA = "latia"
 
@@ -20,6 +21,8 @@ class Account(Base):
     timezone: Mapped[str] = mapped_column(String(64))
     session_version: Mapped[int] = mapped_column(server_default="0")
     profile_photo: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    has_profile_photo: Mapped[bool] = column_property(profile_photo.is_not(None))
+    pressure_ranges: Mapped[dict[str, list[int]] | None] = mapped_column(JSONB, deferred=True)
 
 
 class Reading(Base):

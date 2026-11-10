@@ -1,10 +1,12 @@
+from bisect import bisect_left
 from datetime import UTC, date, datetime, time, timedelta
 from statistics import mean
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import click
-from flask import Blueprint, Response, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from flask.cli import with_appcontext
+from psycopg.errors import UniqueViolation
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -12,10 +14,16 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from . import database
 from .models import Account, Reading
 from .profile_photo import normalize_photo
+from .reports import readings_pdf
 
 journal = Blueprint("journal", __name__)
 METRICS = (("systolic", "Sistólica", "mmHg"), ("diastolic", "Diastólica", "mmHg"), ("pulse", "Pulso", "lpm"))
 PERIODS = {"all": "Todo", "month": "Último mes", "week": "Última semana", "custom": "Rango personalizado"}
+DEFAULT_RANGES = {"systolic": [90, 110, 135, 150], "diastolic": [40, 60, 85, 100]}
+RANGE_LEVELS = ("Muy bajo", "Bajo", "Normal", "Alto", "Muy alto")
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 16
+PASSWORD_LENGTH_ERROR = f"La contraseña debe tener entre {PASSWORD_MIN_LENGTH} y {PASSWORD_MAX_LENGTH} caracteres."
 DUMMY_HASH = generate_password_hash("latia-login-placeholder")
 
 
@@ -34,8 +42,10 @@ def valid_zone(value):
 @with_appcontext
 def create_user(username, password):
     username = username.strip().lower()
-    if not 1 <= len(username) <= 64 or "\x00" in username or len(password) < 12:
-        raise click.ClickException("Indica un usuario de hasta 64 caracteres y una contraseña de al menos 12.")
+    if not 1 <= len(username) <= 64 or "\x00" in username:
+        raise click.ClickException("Indica un usuario válido de hasta 64 caracteres.")
+    if not PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
+        raise click.ClickException(PASSWORD_LENGTH_ERROR)
     db = database()
     db.add(Account(username=username, password_hash=generate_password_hash(password), timezone="America/La_Paz"))
     try:
@@ -119,6 +129,13 @@ def filtered_readings(zone):
     return rows, period, start, end, error
 
 
+def reading_level(row, ranges):
+    systolic = bisect_left(ranges["systolic"], row.systolic)
+    diastolic = bisect_left(ranges["diastolic"], row.diastolic)
+    highest = max(systolic, diastolic)
+    return highest if highest > 2 else min(systolic, diastolic)
+
+
 @journal.get("/")
 @journal.get("/tendencias", endpoint="trends")
 @journal.get("/estadisticas", endpoint="stats")
@@ -128,9 +145,10 @@ def records():
     rows, period, start, end, error = filtered_readings(zone)
     groups = {}
     if view == "records":
+        ranges = g.account.pressure_ranges or DEFAULT_RANGES
         for row in rows:
             local = row.measured_at.astimezone(zone)
-            groups.setdefault(local.date(), []).append((row, local))
+            groups.setdefault(local.date(), []).append((row, local, reading_level(row, ranges)))
     chart = []
     stats = []
     if rows and view == "trends":
@@ -144,13 +162,26 @@ def records():
         for key, label, unit in METRICS:
             values = [getattr(row, key) for row in rows]
             stats.append((label, unit, f"{mean(values):.1f}".replace(".", ","), min(values), max(values)))
-    latest = rows[0] if rows else None
     return render_template(
-        "journal.html", view=view, rows=rows, latest=latest,
-        latest_time=latest.measured_at.astimezone(zone) if latest else None,
-        groups=groups, periods=PERIODS, period=period, start=start, end=end,
+        "journal.html", view=view, rows=rows,
+        groups=groups, levels=RANGE_LEVELS, periods=PERIODS, period=period, start=start, end=end,
         filter_error=error, chart=chart, stats=stats,
     ), 400 if error else 200
+
+
+@journal.get("/registros/exportar.pdf")
+def export_pdf():
+    zone = valid_zone(g.account.timezone)
+    rows, period, start, end, error = filtered_readings(zone)
+    if error:
+        return render_template("error.html", message=error), 400
+
+    label = PERIODS[period]
+    if period == "custom":
+        first, last = (date.fromisoformat(value).strftime("%d/%m/%Y") for value in (start, end))
+        label = f"{first} al {last}"
+    report = readings_pdf(rows, zone, label)
+    return send_file(report, mimetype="application/pdf", as_attachment=True, download_name="LATIA-lecturas.pdf")
 
 
 def find_reading(reading_id):
@@ -249,6 +280,73 @@ def profile():
     return render_template("profile.html", timezone=timezone, error=error), 422 if error else 200
 
 
+@journal.post("/perfil/usuario")
+def change_username():
+    account = g.account
+    username = request.form.get("new_username", "").strip().lower()
+    error = None
+    status = 422
+    if not 1 <= len(username) <= 64 or "\x00" in username:
+        error = "Introduce un nombre de usuario válido de hasta 64 caracteres."
+    elif username == account.username:
+        error = "Elige un nombre de usuario diferente del actual."
+    else:
+        db = database()
+        try:
+            changed = db.scalar(
+                update(Account)
+                .where(
+                    Account.id == account.id,
+                    Account.username == account.username,
+                    Account.session_version == account.session_version,
+                )
+                .values(username=username)
+                .returning(Account.id)
+            )
+            if changed is not None:
+                db.commit()
+                flash("Nombre de usuario actualizado.", "username-updated")
+                return redirect(url_for("journal.profile", _anchor="usuario"), code=303)
+            db.rollback()
+            error = "La cuenta se actualizó en otra sesión. Vuelve a abrir Perfil e inténtalo de nuevo."
+            status = 409
+        except IntegrityError as conflict:
+            db.rollback()
+            if not isinstance(conflict.orig, UniqueViolation):
+                raise
+            error = "Ese nombre de usuario ya está en uso."
+            status = 409
+    return render_template(
+        "profile.html", timezone=account.timezone, username_error=error, new_username=username,
+    ), status
+
+
+@journal.route("/ajustes/rangos", methods=["GET", "POST"])
+def edit_ranges():
+    values = g.account.pressure_ranges or DEFAULT_RANGES
+    error = None
+    if request.method == "POST":
+        values = {
+            key: [request.form.get(f"{key}_{index}", "") for index in range(len(limits))]
+            for key, limits in DEFAULT_RANGES.items()
+        }
+        try:
+            ranges = {key: list(map(int, limits)) for key, limits in values.items()}
+            for limits in ranges.values():
+                if not 1 <= limits[0] < limits[1] < limits[2] < limits[3] <= 999:
+                    raise ValueError
+        except ValueError:
+            error = "Introduce cuatro límites enteros del 1 al 999 en orden ascendente para cada medición."
+        else:
+            g.account.pressure_ranges = ranges
+            database().commit()
+            flash("Rangos guardados.")
+            return redirect(url_for("journal.edit_ranges"), code=303)
+    return render_template(
+        "ranges.html", values=values, levels=RANGE_LEVELS[:-1], metrics=METRICS[:2], error=error,
+    ), 422 if error else 200
+
+
 @journal.post("/perfil/contrasena")
 def change_password():
     current = request.form.get("current_password", "")
@@ -256,8 +354,8 @@ def change_password():
     confirmation = request.form.get("confirm_password", "")
     account = g.account
     error = None
-    if not 12 <= len(new) <= 128:
-        error = "Usa entre 12 y 128 caracteres para la nueva contraseña."
+    if not PASSWORD_MIN_LENGTH <= len(new) <= PASSWORD_MAX_LENGTH:
+        error = PASSWORD_LENGTH_ERROR
     elif new != confirmation:
         error = "La nueva contraseña y su confirmación deben coincidir."
     elif new == current:
@@ -282,7 +380,7 @@ def change_password():
         return redirect(url_for("journal.login"), code=303)
     db.commit()
     session["session_version"] = next_version
-    flash("Contraseña actualizada. Las demás sesiones se cerraron.")
+    flash("Contraseña actualizada. Las demás sesiones se cerraron.", "password-updated")
     return redirect(url_for("journal.profile", _anchor="contrasena"), code=303)
 
 

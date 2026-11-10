@@ -1,59 +1,88 @@
 "use strict";
 
 const source = document.querySelector("#chart-data");
-const canvas = document.querySelector(".chart canvas");
+const trendCharts = document.querySelector("#trend-charts");
+const canvases = document.querySelectorAll(".chart canvas");
 const data = JSON.parse(source.textContent);
-const colors = ["#145a3b", "#236388", "#a64a00"];
 
-function renderTrends() {
+function renderTrends(colors) {
+  const first = data[0].timestamp;
+  const last = data[data.length - 1].timestamp;
+  const span = last - first;
+  const padding = span ? span * 0.025 : 30 * 60 * 1000;
+  const timeZone = trendCharts.dataset.timezone;
+  const day = 24 * 60 * 60 * 1000;
   const dateFormat = new Intl.DateTimeFormat("es", {
-    timeZone: canvas.dataset.timezone,
+    timeZone,
     day: "numeric",
-    month: "short"
+    month: "short",
+    ...(span >= 365 * day ? { year: "numeric" } : {})
   });
-  const metrics = [
-    { key: "systolic", label: "Sistólica", unit: "mmHg" },
-    { key: "diastolic", label: "Diastólica", unit: "mmHg" },
-    { key: "pulse", label: "Pulso", unit: "lpm" }
-  ];
-  new Chart(canvas, {
-    type: "line",
-    data: {
-      datasets: metrics.map(({ key, label, unit }, index) => ({
-        label,
-        unit,
-        data: data.map(row => ({ x: row.timestamp, y: row[key], date: row.label })),
-        borderColor: colors[index],
-        backgroundColor: colors[index],
-        pointRadius: data.length > 60 ? 0 : 3,
-        pointHitRadius: 12,
-        yAxisID: key === "pulse" ? "pulse" : "pressure"
-      }))
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        tooltip: {
-          callbacks: {
-            title: items => items[0].raw.date,
-            label: item => `${item.dataset.label}: ${item.parsed.y} ${item.dataset.unit}`
+  const timeFormat = new Intl.DateTimeFormat("es", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const timestamps = [...new Set(data.map(row => row.timestamp))];
+  const tickCount = Math.min(6, timestamps.length);
+  const ticks = Array.from({ length: tickCount }, (_, index) =>
+    timestamps[Math.round(index * (timestamps.length - 1) / Math.max(1, tickCount - 1))]);
+
+  renderTrend(document.querySelector("#pressure-chart"), "mmHg", [
+    ["systolic", "Sistólica", colors[0]],
+    ["diastolic", "Diastólica", colors[1]]
+  ]);
+  renderTrend(document.querySelector("#pulse-chart"), "lpm", [["pulse", "Pulso", colors[2]]]);
+
+  function renderTrend(canvas, unit, metrics) {
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        datasets: metrics.map(([key, label, color]) => ({
+          label,
+          data: data.map(row => ({ x: row.timestamp, y: row[key], date: row.label })),
+          borderColor: color,
+          backgroundColor: color,
+          pointRadius: data.length > 60 ? 0 : 3,
+          pointHitRadius: 12
+        }))
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              title: items => items[0].raw.date,
+              label: item => `${item.dataset.label}: ${item.parsed.y} ${unit}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: "linear",
+            min: first - padding,
+            max: last + padding,
+            afterBuildTicks: axis => { axis.ticks = ticks.map(value => ({ value })); },
+            ticks: {
+              autoSkip: true,
+              maxRotation: 0,
+              callback: value => span < 6 * day
+                ? [dateFormat.format(value), timeFormat.format(value)]
+                : dateFormat.format(value)
+            }
+          },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: unit },
+            afterFit: axis => { axis.width = 62; }
           }
         }
-      },
-      scales: {
-        x: { type: "linear", ticks: { maxTicksLimit: 6, callback: value => dateFormat.format(value) } },
-        pressure: { title: { display: true, text: "mmHg" } },
-        pulse: { position: "right", title: { display: true, text: "lpm" }, grid: { drawOnChartArea: false } }
       }
-    }
-  });
+    });
+  }
 }
 
-function renderStats() {
-  new Chart(canvas, {
+function renderStats(colors) {
+  new Chart(canvases[0], {
     type: "bar",
     data: {
       labels: data.map(([label, unit]) => `${label} (${unit})`),
@@ -72,11 +101,23 @@ function renderStats() {
   });
 }
 
+function renderChart() {
+  const theme = getComputedStyle(document.documentElement);
+  const colors = ["green", "blue", "orange"].map(color => theme.getPropertyValue(`--chart-${color}`).trim());
+  Chart.defaults.color = theme.getPropertyValue("--muted").trim();
+  Chart.defaults.borderColor = theme.getPropertyValue("--border").trim();
+  canvases.forEach(canvas => Chart.getChart(canvas)?.destroy());
+  if (trendCharts) {
+    renderTrends(colors);
+  } else {
+    renderStats(colors);
+  }
+}
+
 if (typeof Chart === "undefined") {
-  canvas.parentElement.hidden = true;
+  (trendCharts || canvases[0].parentElement).hidden = true;
   document.querySelector("#chart-error").hidden = false;
-} else if (canvas.id === "trend-chart") {
-  renderTrends();
 } else {
-  renderStats();
+  renderChart();
+  document.addEventListener("latia-theme-change", renderChart);
 }

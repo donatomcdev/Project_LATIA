@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Editar rangos · LATIA{% endblock %}
+{% block content %}
+<div class="narrow">
+  <div class="page-heading"><div><p class="eyebrow">AJUSTES</p><h1>Editar rangos</h1><p class="muted">Configura tus límites personales de referencia en mmHg.</p></div></div>
+  <form class="panel form-panel range-form" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for key, label, unit in metrics %}
+    <fieldset>
+      <legend>{{ label }} <small>{{ unit }}</small></legend>
+      {% for level in levels %}
+      <label class="range-row">
+        {{ range_icon(loop.index0) }}
+        <span>{{ level }} hasta</span>
+        <input type="number" inputmode="numeric" name="{{ key }}_{{ loop.index0 }}" value="{{ values[key][loop.index0] }}" min="1" max="999" required aria-label="{{ label }}: {{ level }} hasta">
+      </label>
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+    <button class="button" type="submit">Guardar rangos</button>
+  </form>
+</div>
+{% endblock %}

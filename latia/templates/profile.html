@@ -3,7 +3,7 @@
 {% block content %}
 <div class="narrow">
   <div class="page-heading"><div><p class="eyebrow">TU CUENTA</p><h1>Perfil</h1><p class="muted">Personaliza tu cuenta y tus preferencias.</p></div></div>
-  {% set has_photo = g.account.profile_photo is not none %}
+  {% set has_photo = g.account.has_profile_photo %}
   <form id="foto" class="panel form-panel" method="post" enctype="multipart/form-data" action="{{ url_for('journal.upload_photo') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="profile-identity">
@@ -27,14 +27,24 @@
     <p id="timezone-help" class="muted">Introduce una zona IANA como America/La_Paz. Se usa para mostrar y filtrar las fechas.</p>
     <div class="actions"><button class="button" type="submit">Guardar preferencias</button></div>
   </form>
+  <form id="usuario" class="panel form-panel" method="post" action="{{ url_for('journal.change_username') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Cambiar nombre de usuario</h2>
+    {% for message in get_flashed_messages(category_filter=['username-updated']) %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+    {% if username_error %}<p class="error" role="alert">{{ username_error }}</p>{% endif %}
+    <label>Nuevo nombre de usuario<input name="new_username" value="{{ new_username|default('') }}" maxlength="64" autocapitalize="none" spellcheck="false" autocomplete="off" required></label>
+    <p class="muted">Usarás el nuevo nombre para iniciar sesión.</p>
+    <div class="actions"><button class="button" type="submit">Guardar nombre de usuario</button></div>
+  </form>
   <form id="contrasena" class="panel form-panel" method="post" action="{{ url_for('journal.change_password') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <h2>Cambiar contraseña</h2>
+    {% for message in get_flashed_messages(category_filter=['password-updated']) %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
     {% if password_error %}<p class="error" role="alert">{{ password_error }}</p>{% endif %}
     <label>Contraseña actual<input type="password" name="current_password" autocomplete="current-password" required></label>
-    <label>Nueva contraseña<input type="password" name="new_password" autocomplete="new-password" minlength="12" maxlength="128" required aria-describedby="password-help"></label>
-    <label>Confirmar nueva contraseña<input type="password" name="confirm_password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
-    <p id="password-help" class="muted">Usa entre 12 y 128 caracteres. Al guardar, se cerrarán las demás sesiones de esta cuenta.</p>
+    <label>Nueva contraseña<input type="password" name="new_password" autocomplete="new-password" pattern=".{8,16}" required aria-describedby="password-help"></label>
+    <label>Confirmar nueva contraseña<input type="password" name="confirm_password" autocomplete="new-password" pattern=".{8,16}" required aria-describedby="password-help"></label>
+    <p id="password-help" class="muted">Usa entre 8 y 16 caracteres. Al guardar, se cerrarán las demás sesiones de esta cuenta.</p>
     <div class="actions"><button class="button" type="submit">Cambiar contraseña</button></div>
   </form>
   <form class="logout" method="post" action="{{ url_for('journal.logout') }}">

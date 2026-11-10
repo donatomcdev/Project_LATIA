@@ -16,16 +16,6 @@
   {% if view == 'records' %}<a class="button add add-desktop" href="{{ url_for('journal.editor') }}">{{ icon('plus') }} Añadir lectura</a>{% endif %}
 </div>
 
-{% if view == 'records' and latest %}
-<section class="summary" aria-labelledby="latest-title">
-  <div class="summary-heading"><h2 id="latest-title">Lectura más reciente del período</h2><time datetime="{{ latest_time.isoformat() }}">{{ latest_time.strftime('%d/%m/%Y · %H:%M') }}</time></div>
-  <div class="summary-metrics">
-    <div><span>Presión arterial</span><strong>{{ latest.systolic }}<i>/</i>{{ latest.diastolic }}</strong><small>mmHg</small></div>
-    <div><span>Pulso</span><strong>{{ latest.pulse }}</strong><small>lpm</small></div>
-  </div>
-</section>
-{% endif %}
-
 <button type="button" class="panel filter" id="open-filter" aria-haspopup="dialog" aria-controls="filter-dialog">
   {{ icon('calendar') }} <span>Filtro <strong>{{ periods.get(period, 'Seleccionar') }}{% if period == 'custom' and not filter_error %} · {{ start }} a {{ end }}{% endif %}</strong></span>
   {{ icon('arrow') }}
@@ -66,9 +56,10 @@
   <section class="day">
     <h3><time datetime="{{ day.isoformat() }}">{{ day.strftime('%d/%m/%Y') }}</time></h3>
     <ul class="readings" role="list">
-      {% for row, local in readings %}
-      <li><a class="reading" href="{{ url_for('journal.editor', reading_id=row.id) }}">
+      {% for row, local, level in readings %}
+      <li><a class="reading{% if row.id == rows[0].id %} reading-latest{% endif %}" href="{{ url_for('journal.editor', reading_id=row.id) }}">
         <time datetime="{{ local.isoformat() }}">{{ local.strftime('%H:%M') }}</time>
+        {{ range_icon(level, levels[level]) }}
         <span class="reading-pressure"><strong>{{ row.systolic }}/{{ row.diastolic }}</strong> <small>mmHg</small></span>
         <span class="reading-pulse"><strong>{{ row.pulse }}</strong> <small>lpm</small></span>
         {{ icon('arrow') }}
@@ -83,7 +74,10 @@
 <section class="panel chart-panel">
   <h2>Evolución de tus lecturas</h2>
   <p class="muted">{{ rows|length }} {{ 'lectura' if rows|length == 1 else 'lecturas' }} en el período</p>
-  <div class="chart"><canvas id="trend-chart" data-timezone="{{ g.account.timezone }}" role="img" aria-label="Evolución de la presión sistólica, diastólica y el pulso. Los valores están disponibles en la tabla siguiente."></canvas></div>
+  <div id="trend-charts" data-timezone="{{ g.account.timezone }}">
+    <div class="chart"><canvas id="pressure-chart" role="img" aria-label="Evolución de la presión sistólica y diastólica en mmHg. Los valores están en la tabla siguiente."></canvas></div>
+    <div class="chart"><canvas id="pulse-chart" role="img" aria-label="Evolución del pulso en lpm. Los valores están en la tabla siguiente."></canvas></div>
+  </div>
   <p id="chart-error" class="muted" hidden>El gráfico no está disponible. Puedes consultar los valores en la tabla.</p>
   <script type="application/json" id="chart-data">{{ chart|tojson }}</script>
   <details class="data-details"><summary>Ver datos de la gráfica</summary>

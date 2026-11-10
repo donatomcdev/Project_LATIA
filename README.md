@@ -50,7 +50,7 @@ Flask consulta PostgreSQL directamente por SQLAlchemy. Mantén el esquema `latia
 ```sql
 GRANT USAGE ON SCHEMA latia TO latia_app;
 GRANT SELECT, INSERT ON latia.accounts TO latia_app;
-GRANT UPDATE (timezone, password_hash, session_version, profile_photo) ON latia.accounts TO latia_app;
+GRANT UPDATE (username, timezone, password_hash, session_version, profile_photo, pressure_ranges) ON latia.accounts TO latia_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON latia.readings TO latia_app;
 GRANT USAGE ON SEQUENCE latia.accounts_id_seq, latia.readings_id_seq TO latia_app;
 ```
